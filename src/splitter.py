@@ -7,6 +7,25 @@ class Splitter:
     self.grey = cv.CreateImage(cv.GetSize(self.img), 8, 1)
     cv.CvtColor(self.img, self.grey, cv.CV_BGR2GRAY)
     self.font = cv.InitFont(cv.CV_FONT_HERSHEY_PLAIN, 1.0, 1.0)
+    self.contourMethod = 0
+    self.contourMethods = [
+      (cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_CODE),
+      (cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_APPROX_NONE),
+      (cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_APPROX_SIMPLE),
+      (cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_APPROX_TC89_L1),
+      (cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_APPROX_TC89_KCOS),
+      (cv.CV_RETR_LIST, cv.CV_LINK_RUNS)
+    ]
+
+  def loop(self):
+    while True:
+      key = cv.WaitKey(10)
+      if key == -1: continue
+      key = key % 256
+      #print key, chr(key)
+      sys.stdout.flush()
+      if key == 27: break # ESC
+      if key == 190: self.contourMethod = (self.contourMethod + 1) % len(self.contourMethods) # F1
 
   def test(self, method, min=0, to=100, init=0, step=1):
     name = method.__name__
@@ -20,14 +39,13 @@ class Splitter:
     cv.PutText(img, str(value), (10, 20), self.font, 255)
     cv.ShowImage(method.__name__, img)
 
-  def track(value):
-    global storage, grey, img
-    out = cv.CloneImage(grey)
-    cv.Threshold(out, out, 250, 255, cv.CV_THRESH_BINARY_INV)
-    #contour = cv.FindContours(out, storage, cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_APPROX_SIMPLE)
-    #contour = cv.FindContours(out, storage, cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_APPROX_TC89_L1)
-    contour = cv.FindContours(out, storage, cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_APPROX_TC89_KCOS)
-    #contour = cv.FindContours(out, storage, cv.CV_RETR_LIST, cv.CV_LINK_RUNS)
+  def track(self, value):
+    out = self.adaptiveThreshold(value)
+    method = self.contourMethods[self.contourMethod]
+    storage = cv.CreateMemStorage()
+    contour = cv.FindContours(out, storage, method[0], method[1])
+    cv.PutText(out, str(method[1]), (50, 20), self.font, 255)
+    return out
     if contour:
       cv.Zero(out)
       tmp = contour
@@ -48,7 +66,6 @@ class Splitter:
           print(c)
       #cv.DrawContours(out, contour, cv.ScalarAll(255), cv.ScalarAll(100), 100)
       #cv.ShowImage(win_name, img)
-      cv.ShowImage(win_name, out)
 
   # not working at all
   def segmentation(self, value):
@@ -72,6 +89,8 @@ class Splitter:
     return binary
 
   def adaptiveThreshold(self, value):
+    if value % 2 == 0:
+      value += 1
     binary = cv.CloneImage(self.grey)
     cv.AdaptiveThreshold(binary, binary, 255, cv.CV_ADAPTIVE_THRESH_MEAN_C, cv.CV_THRESH_BINARY_INV, value)
     #cv.AdaptiveThreshold(grey, binary, 255, cv.CV_ADAPTIVE_THRESH_GAUSSIAN_C, cv.CV_THRESH_BINARY_INV, value)
@@ -91,4 +110,5 @@ splitter = Splitter(filename)
 #splitter.test(splitter.threshold, 1, 255, 240)
 #splitter.test(splitter.canny, 1, 255, 240)
 #splitter.test(splitter.segmentation, 1, 255, 240)
-cv.WaitKey(0)
+splitter.test(splitter.track, 1, 255, 240)
+splitter.loop()

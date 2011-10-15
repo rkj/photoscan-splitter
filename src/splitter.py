@@ -4,7 +4,6 @@ class Splitter:
   def __init__(self, filename):
     self.img = cv.LoadImage(filename)
     cv.ShowImage("orig", self.img)
-    self.storage = cv.CreateMemStorage(1000)
     self.grey = cv.CreateImage(cv.GetSize(self.img), 8, 1)
     cv.CvtColor(self.img, self.grey, cv.CV_BGR2GRAY)
     self.font = cv.InitFont(cv.CV_FONT_HERSHEY_PLAIN, 1.0, 1.0)
@@ -20,11 +19,6 @@ class Splitter:
     img = method(value)
     cv.PutText(img, str(value), (10, 20), self.font, 255)
     cv.ShowImage(method.__name__, img)
-
-  def testCanny(self):
-    thres = self.adaptiveThreshold(31)
-    cv.ShowImage("thres", thres)
-    self.test(lambda v: self.canny(thres, v))
 
   def track(value):
     global storage, grey, img
@@ -56,20 +50,21 @@ class Splitter:
       #cv.ShowImage(win_name, img)
       cv.ShowImage(win_name, out)
 
-  def segmentation(value):
-    global storage, grey, level
+  # not working at all
+  def segmentation(self, value):
+    storage = cv.CreateMemStorage(1000)
+    level = 3
     mask = -(1 << level)
+    grey = self.grey
     cv.SetImageROI(grey, (0, 0, grey.width & mask, grey.height & mask))
     out = cv.CloneImage(grey)
-    #cv.Threshold(grey, grey, value, 255, cv.CV_THRESH_BINARY)
+    grey = self.adaptiveThreshold(31)
     contour = cv.PyrSegmentation(grey, out, storage, level, value, 30)
     if contour:
-      cv.ShowImage(win_name, out)
-      #for c in contour:
-        #print(c)
-      #cv.Zero(out)
-      #cv.DrawContours(out, contour, cv.ScalarAll(255), cv.ScalarAll(100), 100)
-      cv.ShowImage(win_name, out)
+      for c in contour:
+        area, color, rect = c
+        cv.Rectangle(out, rect[0:2], rect[2:4], 100, 3, cv.CV_AA)
+    return out
 
   def threshold(self, value):
     binary = cv.CloneImage(self.grey)
@@ -82,9 +77,9 @@ class Splitter:
     #cv.AdaptiveThreshold(grey, binary, 255, cv.CV_ADAPTIVE_THRESH_GAUSSIAN_C, cv.CV_THRESH_BINARY_INV, value)
     return binary
 
-  def canny(self, img, t1 = 10, t2 = 100):
-    can = cv.CloneImage(img)
-    cv.Canny(img, can, t1, t2, 3);
+  def canny(self, t1 = 10, t2 = 100):
+    can = cv.CloneImage(self.grey)
+    cv.Canny(can, can, t1, t2, 3);
     return can
 
 #cv.CreateTrackbar(win_name, "Contours", 0, 255, segmentation)
@@ -92,7 +87,8 @@ class Splitter:
 #track(15)
 filename = sys.argv[1] if len(sys.argv) > 1 else "small1.jpg"
 splitter = Splitter(filename)
-splitter.test(splitter.adaptiveThreshold, 3, 100, 3, 2)
-splitter.test(splitter.threshold, 1, 255, 240)
-splitter.testCanny()
+#splitter.test(splitter.adaptiveThreshold, 3, 100, 3, 2)
+#splitter.test(splitter.threshold, 1, 255, 240)
+#splitter.test(splitter.canny, 1, 255, 240)
+#splitter.test(splitter.segmentation, 1, 255, 240)
 cv.WaitKey(0)

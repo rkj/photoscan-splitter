@@ -1,9 +1,9 @@
 #!/usr/bin/env python2
 import cv, sys
-img = cv.LoadImage(sys.argv[1])
+filename = sys.argv[1] if len(sys.argv) > 1 else "small1.jpg"
+img = cv.LoadImage(filename)
 win_name = "Contours"
 cv.NamedWindow(win_name, cv.CV_WINDOW_AUTOSIZE)
-cv.NamedWindow("orig", cv.CV_WINDOW_AUTOSIZE)
 storage = cv.CreateMemStorage(1000)
 grey = cv.CreateImage(cv.GetSize(img), 8, 1)
 cv.CvtColor(img, grey, cv.CV_BGR2GRAY)
@@ -37,6 +37,7 @@ def track(value):
     #cv.DrawContours(out, contour, cv.ScalarAll(255), cv.ScalarAll(100), 100)
     #cv.ShowImage(win_name, img)
     cv.ShowImage(win_name, out)
+
 def segmentation(value):
   global storage, grey, level
   mask = -(1 << level)
@@ -52,9 +53,27 @@ def segmentation(value):
     #cv.DrawContours(out, contour, cv.ScalarAll(255), cv.ScalarAll(100), 100)
     cv.ShowImage(win_name, out)
 
+def threshold(value):
+  binary = cv.CloneImage(grey)
+  cv.Threshold(grey, binary, value, 255, cv.CV_THRESH_BINARY_INV)
+  cv.ShowImage(win_name, binary)
+
+def canny():
+  cv.NamedWindow("orig", cv.CV_WINDOW_AUTOSIZE)
+  cv.ShowImage("orig", img)
+  binary = cv.CloneImage(grey)
+  cv.Threshold(grey, binary, 200, 255, cv.CV_THRESH_BINARY_INV)
+  cv.ShowImage(win_name, binary)
+  cv.WaitKey(0)
+  cv.Canny(grey, grey, 10, 100, 3);
+  cv.ShowImage(win_name, grey)
+
 #cv.CreateTrackbar(win_name, "Contours", 0, 255, segmentation)
-cv.CreateTrackbar(win_name, "Contours", 0, 255, track)
-cv.ShowImage("orig", img)
-track(15)
+#cv.CreateTrackbar(win_name, "Contours", 0, 255, track)
+#cv.NamedWindow("orig", cv.CV_WINDOW_AUTOSIZE)
+#cv.ShowImage("orig", img)
+#track(15)
+cv.CreateTrackbar("Threshold", win_name, 0, 255, threshold)
+#canny()
 cv.WaitKey(0)
 cv.DestroyWindow(win_name)

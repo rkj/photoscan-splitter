@@ -25,8 +25,9 @@ class Splitter:
   def __init__(self):
     self.parseArgs()
     self.img = cv.LoadImage(self.args.filename)
-    if self.args.interactive and self.img.width > 800:
-      scale = 800.0 / self.img.width 
+    max_width = 400
+    if self.args.interactive and self.img.width > max_width:
+      scale = 1.0 * max_width / self.img.width 
       #print(scale, self.img.width, self.img.height, self.img.width * scale, self.img.height * scale)
       small = cv.CreateImage((int(scale * self.img.width), int(scale * self.img.height)), cv.IPL_DEPTH_8U, 3)
       cv.Resize(self.img, small)
@@ -36,24 +37,24 @@ class Splitter:
     cv.CvtColor(self.img, self.grey, cv.CV_BGR2GRAY)
     self.font = cv.InitFont(cv.CV_FONT_HERSHEY_PLAIN, 1.0, 1.0)
     self.changeContourMethod()
+    self.changeBinarizationMethod()
     self.registerKeys()
 
   def process(self):
+    self._photoIdx = 0
     if self.args.interactive:
       self.loop()
     else:
       self.findContours(240)
 
   def processPhoto(self, photo):
+    self._photoIdx += 1
     if self.args.interactive:
-      cv.ShowImage('Output', photo)
-      cv.WaitKey(0)
+      cv.ShowImage('Output %s' % (self._photoIdx), photo)
     else:
       self.savePhoto(photo)
 
   def savePhoto(self, photo):
-    if not hasattr(self, '_photoIdx'): self._photoIdx = 0 
-    self._photoIdx += 1
     filename = "%s_%s.jpg" % (self.args.saveName, self._photoIdx)
     path = os.path.join(self.args.directory, filename)
     print("Saving: %s" % (path))
@@ -63,7 +64,12 @@ class Splitter:
     self.keys = {}
     self.keys[27] = self.keys[10] = lambda : sys.exit(0) # ESC or ENTER
     self.keys[190] = lambda : splitter.test(splitter.findContours, 3, 255, 240) # F1
-    self.keys[200] = lambda : self.changeContourMethod() # F10
+    self.keys[191] = lambda : splitter.test(splitter.adaptiveThreshold, 3, 100, 3, 2)
+    self.keys[192] = lambda : splitter.test(splitter.threshold, 1, 255, 240)
+    self.keys[193] = lambda : splitter.test(splitter.canny, 1, 255, 240)
+    self.keys[194] = lambda : splitter.test(splitter.segmentation, 1, 255, 240)
+    self.keys[198] = lambda : self.changeBinarizationMethod() # F9
+    self.keys[199] = lambda : self.changeContourMethod() # F10
 
   def loop(self):
     while True:
@@ -104,6 +110,17 @@ class Splitter:
     self.contourMethod = (self.contourMethod + 1) % len(self.contourMethods)
     if hasattr(self, '_test_findContours'): self.testValue(self.findContours, self._lastTrackValue)
 
+  def changeBinarizationMethod(self):
+    if not hasattr(self, 'binarizationMethod'):
+      self.binarizationMethod = -1
+      self.binarizationMethods = [
+          self.threshold,
+          self.adaptiveThreshold,
+          self.canny
+      ]
+    self.binarizationMethod = (self.binarizationMethod + 1) % len(self.binarizationMethods)
+    if hasattr(self, '_test_findContours'): self.testValue(self.findContours, self._lastTrackValue)
+
   def plausiblePhoto(self, contour):
     if len(contour) < 4: return False
     center, size, angle = cv.MinAreaRect2(contour)
@@ -114,19 +131,30 @@ class Splitter:
     return True
 
   def findContours(self, value):
+    self._photoIdx = 0
     self._lastTrackValue = value
-    out = self.adaptiveThreshold(value)
+    binarization = self.binarizationMethods[self.binarizationMethod]
+    out = binarization(value)
+    if self.args.interactive: cv.ShowImage('Binarized', out)
     method = self.contourMethods[self.contourMethod]
     storage = cv.CreateMemStorage()
     contour = cv.FindContours(out, storage, method[0], method[1])
     out = cv.CloneImage(self.img)
     if contour:
-      contours = [( cv.ContourArea(x), x ) for x in seqToList(contour) if self.plausiblePhoto(x)]
+      contours = sorted([( cv.ContourArea(x), x ) for x in seqToList(contour) if self.plausiblePhoto(x)])
+      contours = contours[-10:]
       area_max = max([a for (a, s) in contours])
       contours = [c for (a, c) in contours if area_max / max([a, 0.001]) < 10]
       for contour in contours:
         self.processPhoto(self.processContour(contour, out))
-    cv.PutText(out, method[2], (50, 20), self.font, (255, 0, 0))
+    if self.args.interactive:
+      cv.PutText(out, method[2], (50, 20), self.font, (255, 0, 0))
+      cv.PutText(out, binarization.__name__, (200, 20), self.font, (255, 0, 0))
+      #cv.DrawContours(out, contour, (0, 255, 0), 0, 100)
+      color = 0
+      for cont in seqToList(contour):
+        color += 1
+        cv.PolyLine(out, [cont], False, ((color * 64) % 256, color %256, 255), 1)
     return out
 
   def processContour(self, contour, img):
@@ -151,7 +179,7 @@ class Splitter:
     out = cv.CloneImage(img)
     cv.WarpAffine(img, out, transl_mat)
     if self.args.interactive:
-      cv.PolyLine(img, [map(tInt, p_from)], False, (0, 0, 255), 3)
+      cv.PolyLine(img, [map(tInt, box_points)], False, (0, 0, 255), 2)
     #cv.PolyLine(out, [map(tInt, p_to)], True, (0, 255, 0), 3)
     rect = (p_to[3][0], p_to[3][1], size[0], size[1])
     cv.SetImageROI(out, tuple(map(int, rect)))
@@ -193,8 +221,3 @@ class Splitter:
 
 splitter = Splitter()
 splitter.process()
-#splitter.test(splitter.adaptiveThreshold, 3, 100, 3, 2)
-#splitter.test(splitter.threshold, 1, 255, 240)
-#splitter.test(splitter.canny, 1, 255, 240)
-#splitter.test(splitter.segmentation, 1, 255, 240)
-#splitter.test(splitter.findContours, 3, 255, 240)

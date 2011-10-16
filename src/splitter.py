@@ -1,5 +1,5 @@
 #!/usr/bin/env python2
-import cv, sys, numpy
+import cv, sys, numpy, argparse
 
 def seqToList(cvseq):
   list = []
@@ -7,6 +7,9 @@ def seqToList(cvseq):
     list.append(cvseq)
     cvseq = cvseq.h_next()
   return list
+
+def tInt(t):
+  return tuple([int(x) for x in t])
 
 class Splitter:
   def __init__(self, filename):
@@ -82,8 +85,9 @@ class Splitter:
     if contour:
       contours = [( cv.ContourArea(x), x ) for x in seqToList(contour) if self.plausiblePhoto(x)]
       area_max = max([a for (a, s) in contours])
-      contours = [c for (a, c) in contours if area_max / a < 10]
+      contours = [c for (a, c) in contours if area_max / max([a, 0.001]) < 10]
       for contour in contours:
+        out = cv.CloneImage(self.img)
         self.processContour(contour, out)
     return out
 
@@ -93,48 +97,25 @@ class Splitter:
     box_points = cv.BoxPoints(box)
     points = [(int(x[0]), int(x[1])) for x in box_points]
 
-    rot_mat = cv.CreateMat(2, 3, cv.CV_32F)
-    cv.GetRotationMatrix2D(center, angle, 1.0, rot_mat)
     transl_mat = cv.CreateMat(2, 3, cv.CV_32F)
-    img_center = (img.width / 2.0, img.height / 2.0)
-    p_from = [
-      center,
-      (center[0] + 1, center[1] + 1),
-      (center[0] + 1, center[1])
-    ]
+
+    img_center = (img.width / 2, img.height / 2)
+    half_size = [d / 2 for d in size]
+    p_from = box_points[0:3]
     p_to = [
-      img_center,
-      (img_center[0] + 1, img_center[1] + 1),
-      (img_center[0] + 1, img_center[1])
+      (img_center[0] + half_size[0], img_center[1] - half_size[1]),
+      (img_center[0] + half_size[0], img_center[1] + half_size[1]),
+      (img_center[0] - half_size[0], img_center[1] + half_size[1]),
+      (img_center[0] - half_size[0], img_center[1] - half_size[1])
     ]
     cv.GetAffineTransform(p_from, p_to, transl_mat)
 
     out = cv.CloneImage(img)
-    cv.WarpAffine(img, out, rot_mat)
-    cv.WarpAffine(out, out, transl_mat)
-    cv.PolyLine(img, [points], True, (255, 0, 0), 3)
-
-    points_transf = [
-      (center[0] - size[0]/2, center[1] - size[1] / 2),
-      (center[0] + size[0]/2, center[1] - size[1] / 2),
-      (center[0] + size[0]/2, center[1] + size[1] / 2),
-      (center[0] - size[0]/2, center[1] + size[1] / 2)
-    ]
-
-    if False:
-      inmat = cv.CreateMat(2, len(box_points), cv.CV_32FC1)
-      outmat = cv.CreateMat(1, len(box_points), cv.CV_32FC2)
-      for i in range(inmat.cols):
-        cv.mSet(inmat, 0, i, box_points[i][0])
-        cv.mSet(inmat, 1, i, box_points[i][1])
-      cv.Transform(cv.Reshape(inmat, 2, 1), outmat, rot_mat)
-      outmat = cv.Reshape(outmat, 1, 2)
-      box_transf = [(cv.mGet(outmat, 0, i), cv.mGet(outmat, 1, i)) for i in range(outmat.cols)]
-      points_transf = [(int(x[0]), int(x[1])) for x in box_transf]
-      print([(a,'->', b) for a, b in zip(points, points_transf)])
-    points_transf = [(int(x[0]), int(x[1])) for x in points_transf]
-    cv.PolyLine(out, [points_transf], True, (0, 255, 0), 3)
-
+    cv.WarpAffine(img, out, transl_mat)
+    #cv.PolyLine(img, [map(tInt, p_from), map(tInt, p_to)], False, (0, 0, 255), 3)
+    #cv.PolyLine(out, [map(tInt, p_to)], True, (0, 255, 0), 3)
+    rect = (p_to[3][0], p_to[3][1], size[0], size[1])
+    cv.SetImageROI(out, tuple(map(int, rect)))
     cv.ShowImage("Input", img)
     cv.ShowImage("Output", out)
     cv.WaitKey(0)
@@ -173,14 +154,15 @@ class Splitter:
     cv.Canny(can, can, t1, t2, 3);
     return can
 
-#cv.CreateTrackbar(win_name, "Contours", 0, 255, segmentation)
-#cv.CreateTrackbar(win_name, "Contours", 0, 255, findContours)
-#findContours(15)
-filename = sys.argv[1] if len(sys.argv) > 1 else "small1.jpg"
-splitter = Splitter(filename)
+parser = argparse.ArgumentParser(description = 'Photo splitter')
+parser.add_argument('filename')
+parser.add_argument('-i', '--interactive', dest='interactive', type=bool)
+args = parser.parse_args()
+print args.filename
+splitter = Splitter(args.filename)
+splitter.loop()
 #splitter.test(splitter.adaptiveThreshold, 3, 100, 3, 2)
 #splitter.test(splitter.threshold, 1, 255, 240)
 #splitter.test(splitter.canny, 1, 255, 240)
 #splitter.test(splitter.segmentation, 1, 255, 240)
-splitter.test(splitter.findContours, 3, 255, 240)
-splitter.loop()
+#splitter.test(splitter.findContours, 3, 255, 240)

@@ -90,14 +90,53 @@ class Splitter:
   def processContour(self, contour, img):
     storage = cv.CreateMemStorage()
     box = (center, size, angle) = cv.MinAreaRect2(contour)
-    mat = cv.CreateMat(2, 3, cv.CV_32F)
-    cv.GetRotationMatrix2D(center, angle, 1.0, mat)
+    box_points = cv.BoxPoints(box)
+    points = [(int(x[0]), int(x[1])) for x in box_points]
+
+    rot_mat = cv.CreateMat(2, 3, cv.CV_32F)
+    cv.GetRotationMatrix2D(center, angle, 1.0, rot_mat)
+    transl_mat = cv.CreateMat(2, 3, cv.CV_32F)
+    img_center = (img.width / 2.0, img.height / 2.0)
+    p_from = [
+      center,
+      (center[0] + 1, center[1] + 1),
+      (center[0] + 1, center[1])
+    ]
+    p_to = [
+      img_center,
+      (img_center[0] + 1, img_center[1] + 1),
+      (img_center[0] + 1, img_center[1])
+    ]
+    cv.GetAffineTransform(p_from, p_to, transl_mat)
+
     out = cv.CloneImage(img)
-    cv.WarpAffine(img, out, mat)
-    points = [(int(x[0]), int(x[1])) for x in cv.BoxPoints(box)]
-    cv.PolyLine(img, [points], True, (0, 255, 0))
-    cv.ShowImage("HALO", out)
-    cv.ShowImage("IMG", img)
+    cv.WarpAffine(img, out, rot_mat)
+    cv.WarpAffine(out, out, transl_mat)
+    cv.PolyLine(img, [points], True, (255, 0, 0), 3)
+
+    points_transf = [
+      (center[0] - size[0]/2, center[1] - size[1] / 2),
+      (center[0] + size[0]/2, center[1] - size[1] / 2),
+      (center[0] + size[0]/2, center[1] + size[1] / 2),
+      (center[0] - size[0]/2, center[1] + size[1] / 2)
+    ]
+
+    if False:
+      inmat = cv.CreateMat(2, len(box_points), cv.CV_32FC1)
+      outmat = cv.CreateMat(1, len(box_points), cv.CV_32FC2)
+      for i in range(inmat.cols):
+        cv.mSet(inmat, 0, i, box_points[i][0])
+        cv.mSet(inmat, 1, i, box_points[i][1])
+      cv.Transform(cv.Reshape(inmat, 2, 1), outmat, rot_mat)
+      outmat = cv.Reshape(outmat, 1, 2)
+      box_transf = [(cv.mGet(outmat, 0, i), cv.mGet(outmat, 1, i)) for i in range(outmat.cols)]
+      points_transf = [(int(x[0]), int(x[1])) for x in box_transf]
+      print([(a,'->', b) for a, b in zip(points, points_transf)])
+    points_transf = [(int(x[0]), int(x[1])) for x in points_transf]
+    cv.PolyLine(out, [points_transf], True, (0, 255, 0), 3)
+
+    cv.ShowImage("Input", img)
+    cv.ShowImage("Output", out)
     cv.WaitKey(0)
 
   # not working at all

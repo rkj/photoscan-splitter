@@ -12,14 +12,50 @@ def tInt(t):
   return tuple([int(x) for x in t])
 
 class Splitter:
-  def __init__(self, filename):
-    self.img = cv.LoadImage(filename)
-    cv.ShowImage("orig", self.img)
+  def parseArgs(self):
+    parser = argparse.ArgumentParser(description = 'Photo splitter')
+    parser.add_argument('-i', '--interactive', action='store_true')
+    parser.add_argument('-s', '--saveName')
+    parser.add_argument('filename')
+    self.args = parser.parse_args()
+    if self.args.saveName is None:
+      self.args.saveName = self.args.filename[0:-4]
+
+  def __init__(self):
+    self.parseArgs()
+    self.img = cv.LoadImage(self.args.filename)
+    if self.args.interactive and self.img.width > 800:
+      scale = 800.0 / self.img.width 
+      #print(scale, self.img.width, self.img.height, self.img.width * scale, self.img.height * scale)
+      small = cv.CreateImage((int(scale * self.img.width), int(scale * self.img.height)), cv.IPL_DEPTH_8U, 3)
+      cv.Resize(self.img, small)
+      self.img = small
+      cv.ShowImage("orig", self.img)
     self.grey = cv.CreateImage(cv.GetSize(self.img), 8, 1)
     cv.CvtColor(self.img, self.grey, cv.CV_BGR2GRAY)
     self.font = cv.InitFont(cv.CV_FONT_HERSHEY_PLAIN, 1.0, 1.0)
     self.changeContourMethod()
     self.registerKeys()
+
+  def process(self):
+    if self.args.interactive:
+      self.loop()
+    else:
+      self.findContours(240)
+
+  def processPhoto(self, photo):
+    if self.args.interactive:
+      cv.ShowImage('Output', photo)
+      cv.WaitKey(0)
+    else:
+      self.savePhoto(photo)
+
+  def savePhoto(self, photo):
+    if not hasattr(self, '_photoIdx'): self._photoIdx = 0 
+    self._photoIdx += 1
+    filename = "%s_%s.jpg" % (self.args.saveName, self._photoIdx)
+    print("Saving: ", filename)
+    cv.SaveImage(filename, photo)
 
   def registerKeys(self):
     self.keys = {}
@@ -81,14 +117,13 @@ class Splitter:
     storage = cv.CreateMemStorage()
     contour = cv.FindContours(out, storage, method[0], method[1])
     out = cv.CloneImage(self.img)
-    cv.PutText(out, method[2], (50, 20), self.font, (255, 0, 0))
     if contour:
       contours = [( cv.ContourArea(x), x ) for x in seqToList(contour) if self.plausiblePhoto(x)]
       area_max = max([a for (a, s) in contours])
       contours = [c for (a, c) in contours if area_max / max([a, 0.001]) < 10]
       for contour in contours:
-        out = cv.CloneImage(self.img)
-        self.processContour(contour, out)
+        self.processPhoto(self.processContour(contour, out))
+    cv.PutText(out, method[2], (50, 20), self.font, (255, 0, 0))
     return out
 
   def processContour(self, contour, img):
@@ -116,9 +151,7 @@ class Splitter:
     #cv.PolyLine(out, [map(tInt, p_to)], True, (0, 255, 0), 3)
     rect = (p_to[3][0], p_to[3][1], size[0], size[1])
     cv.SetImageROI(out, tuple(map(int, rect)))
-    cv.ShowImage("Input", img)
-    cv.ShowImage("Output", out)
-    cv.WaitKey(0)
+    return out
 
   # not working at all
   def segmentation(self, value):
@@ -154,13 +187,8 @@ class Splitter:
     cv.Canny(can, can, t1, t2, 3);
     return can
 
-parser = argparse.ArgumentParser(description = 'Photo splitter')
-parser.add_argument('filename')
-parser.add_argument('-i', '--interactive', dest='interactive', type=bool)
-args = parser.parse_args()
-print args.filename
-splitter = Splitter(args.filename)
-splitter.loop()
+splitter = Splitter()
+splitter.process()
 #splitter.test(splitter.adaptiveThreshold, 3, 100, 3, 2)
 #splitter.test(splitter.threshold, 1, 255, 240)
 #splitter.test(splitter.canny, 1, 255, 240)

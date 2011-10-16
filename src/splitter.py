@@ -1,5 +1,5 @@
 #!/usr/bin/env python2
-import cv, sys, numpy, argparse
+import cv, sys, os, numpy, argparse
 
 def seqToList(cvseq):
   list = []
@@ -16,10 +16,11 @@ class Splitter:
     parser = argparse.ArgumentParser(description = 'Photo splitter')
     parser.add_argument('-i', '--interactive', action='store_true')
     parser.add_argument('-s', '--saveName')
+    parser.add_argument('-d', '--directory', default='.')
     parser.add_argument('filename')
     self.args = parser.parse_args()
-    if self.args.saveName is None:
-      self.args.saveName = self.args.filename[0:-4]
+    if self.args.saveName is None: self.args.saveName = self.args.filename[0:-4]
+    if not os.path.exists(self.args.directory): os.makedirs(self.args.directory)
 
   def __init__(self):
     self.parseArgs()
@@ -54,13 +55,15 @@ class Splitter:
     if not hasattr(self, '_photoIdx'): self._photoIdx = 0 
     self._photoIdx += 1
     filename = "%s_%s.jpg" % (self.args.saveName, self._photoIdx)
-    print("Saving: ", filename)
-    cv.SaveImage(filename, photo)
+    path = os.path.join(self.args.directory, filename)
+    print("Saving: %s" % (path))
+    cv.SaveImage(path, photo)
 
   def registerKeys(self):
     self.keys = {}
     self.keys[27] = self.keys[10] = lambda : sys.exit(0) # ESC or ENTER
-    self.keys[190] = lambda : self.changeContourMethod() # F1
+    self.keys[190] = lambda : splitter.test(splitter.findContours, 3, 255, 240) # F1
+    self.keys[200] = lambda : self.changeContourMethod() # F10
 
   def loop(self):
     while True:
@@ -147,7 +150,8 @@ class Splitter:
 
     out = cv.CloneImage(img)
     cv.WarpAffine(img, out, transl_mat)
-    #cv.PolyLine(img, [map(tInt, p_from), map(tInt, p_to)], False, (0, 0, 255), 3)
+    if self.args.interactive:
+      cv.PolyLine(img, [map(tInt, p_from)], False, (0, 0, 255), 3)
     #cv.PolyLine(out, [map(tInt, p_to)], True, (0, 255, 0), 3)
     rect = (p_to[3][0], p_to[3][1], size[0], size[1])
     cv.SetImageROI(out, tuple(map(int, rect)))

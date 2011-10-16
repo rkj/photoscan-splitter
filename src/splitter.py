@@ -1,5 +1,13 @@
 #!/usr/bin/env python2
-import cv, sys
+import cv, sys, numpy
+
+def seqToList(cvseq):
+  list = []
+  while cvseq is not None:
+    list.append(cvseq)
+    cvseq = cvseq.h_next()
+  return list
+
 class Splitter:
   def __init__(self, filename):
     self.img = cv.LoadImage(filename)
@@ -54,6 +62,15 @@ class Splitter:
     self.contourMethod = (self.contourMethod + 1) % len(self.contourMethods)
     if hasattr(self, '_test_findContours'): self.testValue(self.findContours, self._lastTrackValue)
 
+  def plausiblePhoto(self, contour):
+    if len(contour) < 4: return False
+    center, size, angle = cv.MinAreaRect2(contour)
+    if size[0] < size[1]: size = (size[1], size[0])
+    if size[1] < 0.001 : return False
+    ratio = size[0] / size[1]
+    if ratio > 2.5: return False
+    return True
+
   def findContours(self, value):
     self._lastTrackValue = value
     out = self.adaptiveThreshold(value)
@@ -63,33 +80,25 @@ class Splitter:
     out = cv.CloneImage(self.img)
     cv.PutText(out, method[2], (50, 20), self.font, (255, 0, 0))
     if contour:
-      #cv.DrawContours(out, contour, 150, 100, 1)
-      #return out
-      while (contour.h_next()):
-        contour = contour.h_next()
+      contours = [( cv.ContourArea(x), x ) for x in seqToList(contour) if self.plausiblePhoto(x)]
+      area_max = max([a for (a, s) in contours])
+      contours = [c for (a, c) in contours if area_max / a < 10]
+      for contour in contours:
         self.processContour(contour, out)
     return out
 
   def processContour(self, contour, img):
     storage = cv.CreateMemStorage()
-    if len(contour) < 4: return
-    box = cv.MinAreaRect2(contour, storage)
+    box = (center, size, angle) = cv.MinAreaRect2(contour)
+    mat = cv.CreateMat(2, 3, cv.CV_32F)
+    cv.GetRotationMatrix2D(center, angle, 1.0, mat)
+    out = cv.CloneImage(img)
+    cv.WarpAffine(img, out, mat)
     points = [(int(x[0]), int(x[1])) for x in cv.BoxPoints(box)]
     cv.PolyLine(img, [points], True, (0, 255, 0))
-    return
-    #bb = cv.ConvexHull2(contour, storage)
-    #print(bb)
-    #cv.FillConvexPoly(img, bb, 255)
-    #return
-    s = cv.ApproxPoly(contour, storage, cv.CV_POLY_APPROX_DP, value)
-    if len(s) < 4:
-      return
-    print("SEQUENCE")
-    #cv.FillConvexPoly(img, s, 255)
-    for c in s:
-      print("C in s", c)
-    sys.stdout.flush()
-
+    cv.ShowImage("HALO", out)
+    cv.ShowImage("IMG", img)
+    cv.WaitKey(0)
 
   # not working at all
   def segmentation(self, value):

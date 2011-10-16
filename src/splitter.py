@@ -7,28 +7,29 @@ class Splitter:
     self.grey = cv.CreateImage(cv.GetSize(self.img), 8, 1)
     cv.CvtColor(self.img, self.grey, cv.CV_BGR2GRAY)
     self.font = cv.InitFont(cv.CV_FONT_HERSHEY_PLAIN, 1.0, 1.0)
-    self.contourMethod = 0
-    self.contourMethods = [
-      (cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_CODE),
-      (cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_APPROX_NONE),
-      (cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_APPROX_SIMPLE),
-      (cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_APPROX_TC89_L1),
-      (cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_APPROX_TC89_KCOS),
-      (cv.CV_RETR_LIST, cv.CV_LINK_RUNS)
-    ]
+    self.changeContourMethod()
+    self.registerKeys()
+
+  def registerKeys(self):
+    self.keys = {}
+    self.keys[27] = self.keys[10] = lambda : sys.exit(0) # ESC or ENTER
+    self.keys[190] = lambda : self.changeContourMethod() # F1
 
   def loop(self):
     while True:
       key = cv.WaitKey(10)
       if key == -1: continue
       key = key % 256
-      #print key, chr(key)
-      sys.stdout.flush()
-      if key == 27: break # ESC
-      if key == 190: self.contourMethod = (self.contourMethod + 1) % len(self.contourMethods) # F1
+      if key in self.keys:
+        self.keys[key]()
+      else:
+        print key, chr(key)
+        sys.stdout.flush()
+        
 
   def test(self, method, min=0, to=100, init=0, step=1):
     name = method.__name__
+    setattr(self, '_test_' + name, True)
     cv.NamedWindow(name, cv.CV_WINDOW_AUTOSIZE)
     range = (to - min) / step
     cv.CreateTrackbar(name, name, init, range, lambda v: self.testValue(method, v * step + min))
@@ -39,33 +40,56 @@ class Splitter:
     cv.PutText(img, str(value), (10, 20), self.font, 255)
     cv.ShowImage(method.__name__, img)
 
-  def track(self, value):
+  def changeContourMethod(self):
+    if not hasattr(self, 'contourMethod'):
+      self.contourMethod = 0
+      self.contourMethods = [
+        (cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_CODE, 'chain_code'),
+        (cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_APPROX_NONE, 'approx_none'),
+        (cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_APPROX_SIMPLE, 'approx_simple'),
+        (cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_APPROX_TC89_L1, 'tc89_l1'),
+        (cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_APPROX_TC89_KCOS, 'tc89_kcos'),
+        (cv.CV_RETR_LIST, cv.CV_LINK_RUNS, 'link_runs')
+      ]
+    self.contourMethod = (self.contourMethod + 1) % len(self.contourMethods)
+    if hasattr(self, '_test_findContours'): self.testValue(self.findContours, self._lastTrackValue)
+
+  def findContours(self, value):
+    self._lastTrackValue = value
     out = self.adaptiveThreshold(value)
     method = self.contourMethods[self.contourMethod]
     storage = cv.CreateMemStorage()
     contour = cv.FindContours(out, storage, method[0], method[1])
-    cv.PutText(out, str(method[1]), (50, 20), self.font, 255)
-    return out
+    out = cv.CloneImage(self.img)
+    cv.PutText(out, method[2], (50, 20), self.font, (255, 0, 0))
     if contour:
-      cv.Zero(out)
-      tmp = contour
-      while (tmp.h_next()):
-        tmp = tmp.h_next()
-        if len(tmp) < 4:
-          continue
-        bb = cv.ConvexHull2(tmp, storage)
-        print(bb)
-        cv.FillConvexPoly(out, bb, 255)
-        continue
-        s = cv.ApproxPoly(tmp, storage, cv.CV_POLY_APPROX_DP, value)
-        if len(s) < 4:
-          continue
-        print("SEQUENCE")
-        cv.FillConvexPoly(out, s, 255)
-        for c in s:
-          print(c)
-      #cv.DrawContours(out, contour, cv.ScalarAll(255), cv.ScalarAll(100), 100)
-      #cv.ShowImage(win_name, img)
+      #cv.DrawContours(out, contour, 150, 100, 1)
+      #return out
+      while (contour.h_next()):
+        contour = contour.h_next()
+        self.processContour(contour, out)
+    return out
+
+  def processContour(self, contour, img):
+    storage = cv.CreateMemStorage()
+    if len(contour) < 4: return
+    box = cv.MinAreaRect2(contour, storage)
+    points = [(int(x[0]), int(x[1])) for x in cv.BoxPoints(box)]
+    cv.PolyLine(img, [points], True, (0, 255, 0))
+    return
+    #bb = cv.ConvexHull2(contour, storage)
+    #print(bb)
+    #cv.FillConvexPoly(img, bb, 255)
+    #return
+    s = cv.ApproxPoly(contour, storage, cv.CV_POLY_APPROX_DP, value)
+    if len(s) < 4:
+      return
+    print("SEQUENCE")
+    #cv.FillConvexPoly(img, s, 255)
+    for c in s:
+      print("C in s", c)
+    sys.stdout.flush()
+
 
   # not working at all
   def segmentation(self, value):
@@ -89,8 +113,8 @@ class Splitter:
     return binary
 
   def adaptiveThreshold(self, value):
-    if value % 2 == 0:
-      value += 1
+    if value < 3: value = 3
+    if value % 2 == 0: value += 1
     binary = cv.CloneImage(self.grey)
     cv.AdaptiveThreshold(binary, binary, 255, cv.CV_ADAPTIVE_THRESH_MEAN_C, cv.CV_THRESH_BINARY_INV, value)
     #cv.AdaptiveThreshold(grey, binary, 255, cv.CV_ADAPTIVE_THRESH_GAUSSIAN_C, cv.CV_THRESH_BINARY_INV, value)
@@ -102,13 +126,13 @@ class Splitter:
     return can
 
 #cv.CreateTrackbar(win_name, "Contours", 0, 255, segmentation)
-#cv.CreateTrackbar(win_name, "Contours", 0, 255, track)
-#track(15)
+#cv.CreateTrackbar(win_name, "Contours", 0, 255, findContours)
+#findContours(15)
 filename = sys.argv[1] if len(sys.argv) > 1 else "small1.jpg"
 splitter = Splitter(filename)
 #splitter.test(splitter.adaptiveThreshold, 3, 100, 3, 2)
 #splitter.test(splitter.threshold, 1, 255, 240)
 #splitter.test(splitter.canny, 1, 255, 240)
 #splitter.test(splitter.segmentation, 1, 255, 240)
-splitter.test(splitter.track, 1, 255, 240)
+splitter.test(splitter.findContours, 3, 255, 240)
 splitter.loop()

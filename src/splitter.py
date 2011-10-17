@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 import cv, sys, os, numpy, argparse
 
 def seqToList(cvseq):
@@ -14,9 +14,10 @@ def tInt(t):
 class Splitter:
   def parseArgs(self):
     parser = argparse.ArgumentParser(description = 'Photo splitter')
-    parser.add_argument('-i', '--interactive', action='store_true')
-    parser.add_argument('-s', '--saveName')
-    parser.add_argument('-d', '--directory', default='.')
+    parser.add_argument('-i', '--interactive', action='store_true', help='In interactive mode files are not saved, images are displayed and various options may be tested')
+    parser.add_argument('-s', '--saveName', help='Filename prefix under which the files should be saved. Defaults to original filename')
+    parser.add_argument('-d', '--directory', default='.', help='Directory where files should be saved')
+    parser.add_argument('-w', '--width', default=600, help='Width to scale the image to in the interactive mode')
     parser.add_argument('filename')
     self.args = parser.parse_args()
     if self.args.saveName is None: self.args.saveName = self.args.filename[0:-4]
@@ -25,14 +26,13 @@ class Splitter:
   def __init__(self):
     self.parseArgs()
     self.img = cv.LoadImage(self.args.filename)
-    max_width = 400
+    max_width = int(self.args.width)
     if self.args.interactive and self.img.width > max_width:
       scale = 1.0 * max_width / self.img.width 
       #print(scale, self.img.width, self.img.height, self.img.width * scale, self.img.height * scale)
       small = cv.CreateImage((int(scale * self.img.width), int(scale * self.img.height)), cv.IPL_DEPTH_8U, 3)
       cv.Resize(self.img, small)
       self.img = small
-      cv.ShowImage("orig", self.img)
     self.grey = cv.CreateImage(cv.GetSize(self.img), 8, 1)
     cv.CvtColor(self.img, self.grey, cv.CV_BGR2GRAY)
     self.font = cv.InitFont(cv.CV_FONT_HERSHEY_PLAIN, 1.0, 1.0)
@@ -43,6 +43,7 @@ class Splitter:
   def process(self):
     self._photoIdx = 0
     if self.args.interactive:
+      cv.ShowImage('Original', self.img)
       self.loop()
     else:
       self.findContours(240)
@@ -50,7 +51,7 @@ class Splitter:
   def processPhoto(self, photo):
     self._photoIdx += 1
     if self.args.interactive:
-      cv.ShowImage('Output %s' % (self._photoIdx), photo)
+      cv.ShowImage('Output %d' % (self._photoIdx), photo)
     else:
       self.savePhoto(photo)
 
@@ -63,13 +64,13 @@ class Splitter:
   def registerKeys(self):
     self.keys = {}
     self.keys[27] = self.keys[10] = lambda : sys.exit(0) # ESC or ENTER
-    self.keys[190] = lambda : splitter.test(splitter.findContours, 3, 255, 240) # F1
-    self.keys[191] = lambda : splitter.test(splitter.adaptiveThreshold, 3, 100, 3, 2)
-    self.keys[192] = lambda : splitter.test(splitter.threshold, 1, 255, 240)
-    self.keys[193] = lambda : splitter.test(splitter.canny, 1, 255, 240)
-    self.keys[194] = lambda : splitter.test(splitter.segmentation, 1, 255, 240)
-    self.keys[198] = lambda : self.changeBinarizationMethod() # F9
-    self.keys[199] = lambda : self.changeContourMethod() # F10
+    self.keys[49] = self.keys[190] = lambda : splitter.test(splitter.findContours, 3, 255, 240) # F1
+    self.keys[50] = self.keys[191] = lambda : splitter.test(splitter.adaptiveThreshold, 3, 100, 3, 2)
+    self.keys[51] = self.keys[192] = lambda : splitter.test(splitter.threshold, 1, 255, 240)
+    self.keys[52] = self.keys[193] = lambda : splitter.test(splitter.canny, 1, 255, 240)
+    self.keys[53] = self.keys[194] = lambda : splitter.test(splitter.segmentation, 1, 255, 240)
+    self.keys[57] = self.keys[198] = lambda : self.changeBinarizationMethod() # F9
+    self.keys[48] = self.keys[199] = lambda : self.changeContourMethod() # F10
 
   def loop(self):
     while True:
@@ -148,6 +149,8 @@ class Splitter:
       for contour in contours:
         self.processPhoto(self.processContour(contour, out))
     if self.args.interactive:
+      for i in xrange(self._photoIdx, 10):
+        cv.DestroyWindow("Output %d" % (i))
       cv.PutText(out, method[2], (50, 20), self.font, (255, 0, 0))
       cv.PutText(out, binarization.__name__, (200, 20), self.font, (255, 0, 0))
       #cv.DrawContours(out, contour, (0, 255, 0), 0, 100)

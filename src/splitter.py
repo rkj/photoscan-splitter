@@ -160,7 +160,7 @@ class Splitter:
       for contour in contours:
         self.processPhoto(self.processContour(contour, out))
     if self.args.interactive:
-      for i in xrange(self._photoIdx, 10):
+      for i in xrange(self._photoIdx + 1, 10):
         cv.DestroyWindow("Output %d" % (i))
       cv.PutText(out, method[2], (10, 20), self.font, (255, 0, 0))
       cv.PutText(out, binarization.__name__, (200, 20), self.font, (255, 0, 0))

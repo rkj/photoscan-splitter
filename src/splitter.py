@@ -28,7 +28,7 @@ class Splitter:
     self.img = cv.LoadImage(self.args.filename)
     max_width = int(self.args.width)
     if self.args.interactive and self.img.width > max_width:
-      scale = 1.0 * max_width / self.img.width 
+      scale = 1.0 * max_width / self.img.width
       #print(scale, self.img.width, self.img.height, self.img.width * scale, self.img.height * scale)
       small = cv.CreateImage((int(scale * self.img.width), int(scale * self.img.height)), cv.IPL_DEPTH_8U, 3)
       cv.Resize(self.img, small)
@@ -38,6 +38,7 @@ class Splitter:
     self.font = cv.InitFont(cv.CV_FONT_HERSHEY_PLAIN, 1.0, 1.0)
     self.changeContourMethod()
     self.changeBinarizationMethod()
+    self.changeAdaptiveMethod()
     self.registerKeys()
 
   def process(self):
@@ -69,6 +70,7 @@ class Splitter:
     self.keys[51] = self.keys[192] = lambda : splitter.test(splitter.threshold, 1, 255, 240)
     self.keys[52] = self.keys[193] = lambda : splitter.test(splitter.canny, 1, 255, 240)
     self.keys[53] = self.keys[194] = lambda : splitter.test(splitter.segmentation, 1, 255, 240)
+    self.keys[56] = self.keys[197] = lambda : self.changeAdaptiveMethod() # F8
     self.keys[57] = self.keys[198] = lambda : self.changeBinarizationMethod() # F9
     self.keys[48] = self.keys[199] = lambda : self.changeContourMethod() # F10
 
@@ -82,7 +84,6 @@ class Splitter:
       else:
         print key, chr(key)
         sys.stdout.flush()
-        
 
   def test(self, method, min=0, to=100, init=0, step=1):
     name = method.__name__
@@ -101,7 +102,7 @@ class Splitter:
     if not hasattr(self, 'contourMethod'):
       self.contourMethod = 0
       self.contourMethods = [
-        (cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_CODE, 'chain_code'),
+        #(cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_CODE, 'chain_code'),
         (cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_APPROX_NONE, 'approx_none'),
         (cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_APPROX_SIMPLE, 'approx_simple'),
         (cv.CV_RETR_EXTERNAL, cv.CV_CHAIN_APPROX_TC89_L1, 'tc89_l1'),
@@ -115,11 +116,21 @@ class Splitter:
     if not hasattr(self, 'binarizationMethod'):
       self.binarizationMethod = -1
       self.binarizationMethods = [
-          self.threshold,
           self.adaptiveThreshold,
+          self.threshold,
           self.canny
       ]
     self.binarizationMethod = (self.binarizationMethod + 1) % len(self.binarizationMethods)
+    if hasattr(self, '_test_findContours'): self.testValue(self.findContours, self._lastTrackValue)
+
+  def changeAdaptiveMethod(self):
+    if not hasattr(self, 'adaptiveMethod'):
+      self.adaptiveMethod = -1
+      self.adaptiveMethods = [
+        (cv.CV_ADAPTIVE_THRESH_MEAN_C, 'mean_c'),
+        (cv.CV_ADAPTIVE_THRESH_GAUSSIAN_C, 'gaussian_c')
+      ]
+    self.adaptiveMethod = (self.adaptiveMethod + 1) % len(self.adaptiveMethods)
     if hasattr(self, '_test_findContours'): self.testValue(self.findContours, self._lastTrackValue)
 
   def plausiblePhoto(self, contour):
@@ -151,8 +162,9 @@ class Splitter:
     if self.args.interactive:
       for i in xrange(self._photoIdx, 10):
         cv.DestroyWindow("Output %d" % (i))
-      cv.PutText(out, method[2], (50, 20), self.font, (255, 0, 0))
+      cv.PutText(out, method[2], (10, 20), self.font, (255, 0, 0))
       cv.PutText(out, binarization.__name__, (200, 20), self.font, (255, 0, 0))
+      cv.PutText(out, self.adaptiveMethods[self.adaptiveMethod][1], (400, 20), self.font, (255, 0, 0))
       #cv.DrawContours(out, contour, (0, 255, 0), 0, 100)
       color = 0
       for cont in seqToList(contour):
@@ -213,8 +225,8 @@ class Splitter:
     if value < 3: value = 3
     if value % 2 == 0: value += 1
     binary = cv.CloneImage(self.grey)
-    cv.AdaptiveThreshold(binary, binary, 255, cv.CV_ADAPTIVE_THRESH_MEAN_C, cv.CV_THRESH_BINARY_INV, value)
-    #cv.AdaptiveThreshold(grey, binary, 255, cv.CV_ADAPTIVE_THRESH_GAUSSIAN_C, cv.CV_THRESH_BINARY_INV, value)
+    method = self.adaptiveMethods[self.adaptiveMethod][0]
+    cv.AdaptiveThreshold(binary, binary, 255, method, cv.CV_THRESH_BINARY_INV, value)
     return binary
 
   def canny(self, t1 = 10, t2 = 100):
